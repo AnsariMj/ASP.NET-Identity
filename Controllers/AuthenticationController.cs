@@ -1,17 +1,15 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using UserManagement.API.Models.Authentication.SignUp;
-using UserManagement.API.Models.Authentication;
+using UserManagement.API.Models;
 using User.Management.Service.Services;
 using User.Management.Service.Models;
-using Org.BouncyCastle.Ocsp;
-using UserManagement.API.Models.Authentication.Login;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
-using System.ComponentModel.DataAnnotations;
+using User.Management.Service.Models.Authentication.SignUp;
+using User.Management.Service.Models.Authentication.Login;
 
 namespace UserManagement.API.Controllers;
 
@@ -24,12 +22,14 @@ public class AuthenticationController : ControllerBase
     private readonly SignInManager<IdentityUser> _signInManager;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
+    private readonly IUsersManagement _user;
     public AuthenticationController(
         UserManager<IdentityUser> userManager,
         RoleManager<IdentityRole> roleManager,
         SignInManager<IdentityUser> signInManager,
         IConfiguration configuration,
-        IEmailService emailService
+        IEmailService emailService,
+        IUsersManagement user
         )
     {
         _userManager = userManager;
@@ -37,6 +37,7 @@ public class AuthenticationController : ControllerBase
         _signInManager = signInManager;
         _configuration = configuration;
         _emailService = emailService;
+        _user = user;
     }
 
 
@@ -44,44 +45,14 @@ public class AuthenticationController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Rsgister([FromBody] RegisterUser registerUser, string role)
     {
-        // Check User Exists
-        var userExist = await _userManager.FindByEmailAsync(registerUser.Email);
-        if (userExist != null)
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new Response { Status = "Error", Message = "User Already Exists" });
-        }
-        //Add the user in Db
-        IdentityUser user = new()
-        {
-            Email = registerUser.Email,
-            SecurityStamp = Guid.NewGuid().ToString(),
-            UserName = registerUser.Username,
-            TwoFactorEnabled = true
-        };
-        if (await _roleManager.RoleExistsAsync(role))
-        {
-            var result = await _userManager.CreateAsync(user, registerUser.Password);
-            if (!result.Succeeded)
-            {
-                //   return StatusCode(StatusCodes.Status500InternalServerError, new Response { Status = "Error", Message = "Fail to Create User" });
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return StatusCode(StatusCodes.Status500InternalServerError, new Response { Status = "Error", Message = $"Fail to Create User: {errors}" });
-            }
-            //Add Role to the user
-            await _userManager.AddToRoleAsync(user, role);
+        var toekn = await _user.CreateUserWithTokenAsync(registerUser);
 
-            //Add Token to Verify the email..
-            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { token, email = user.Email }, Request.Scheme);
-            var message = new Message(new string[] { user.Email }, "Confirmation email link", confirmationLink!);
-            _emailService.SendEmail(message);
+        //Add Token to Verify the email..
+        var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { toekn, email = registerUser.Email }, Request.Scheme);
+        var message = new Message(new string[] { registerUser.Email }, "Confirmation email link", confirmationLink!);
+        _emailService.SendEmail(message);
 
-            return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = "User Created Successfully" });
-        }
-        else
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, new Response { Status = "Error", Message = "This Role Does't Exist!" });
-        }
+        return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"Email Verification link sent to {registerUser.Email}  Please Verfiy your account" });
     }
 
     //Login 

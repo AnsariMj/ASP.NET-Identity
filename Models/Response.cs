@@ -1,4 +1,4 @@
-﻿namespace UserManagement.API.Models.Authentication
+﻿namespace UserManagement.API.Models
 {
     public class Response
     {
