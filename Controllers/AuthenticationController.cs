@@ -43,16 +43,20 @@ public class AuthenticationController : ControllerBase
 
     // Add New Users
     [HttpPost]
-    public async Task<IActionResult> Rsgister([FromBody] RegisterUser registerUser, string role)
+    public async Task<IActionResult> Rsgister([FromBody] RegisterUser registerUser)
     {
-        var toekn = await _user.CreateUserWithTokenAsync(registerUser);
+        var toeknResponse = await _user.CreateUserWithTokenAsync(registerUser);
+        if (toeknResponse.IsSuccess)
+        {
+            await _user.AssignRoleToUserAsync(registerUser.roles);
+            //Add Token to Verify the email..
+            var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { toeknResponse.Response, email = registerUser.Email }, Request.Scheme);
+            var message = new Message(new string[] { registerUser.Email }, "Confirmation email link", confirmationLink!);
+            _emailService.SendEmail(message);
 
-        //Add Token to Verify the email..
-        var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { toekn, email = registerUser.Email }, Request.Scheme);
-        var message = new Message(new string[] { registerUser.Email }, "Confirmation email link", confirmationLink!);
-        _emailService.SendEmail(message);
-
-        return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"Email Verification link sent to {registerUser.Email}  Please Verfiy your account" });
+            return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"Email Verification link sent to {registerUser.Email}  Please Verfiy your account" });
+        }
+        return StatusCode(StatusCodes.Status500InternalServerError, new Response { Message = toeknResponse.Message, IsSuccess = false });
     }
 
     //Login 
