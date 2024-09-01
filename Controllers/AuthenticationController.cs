@@ -48,13 +48,13 @@ public class AuthenticationController : ControllerBase
         var toeknResponse = await _user.CreateUserWithTokenAsync(registerUser);
         if (toeknResponse.IsSuccess)
         {
-            await _user.AssignRoleToUserAsync(registerUser.roles);
+            await _user.AssignRoleToUserAsync(registerUser.roles, toeknResponse.Response.User);
             //Add Token to Verify the email..
-            var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { toeknResponse.Response, email = registerUser.Email }, Request.Scheme);
+            var confirmationLink = Url.Action(nameof(ConfirmEmail), "Authentication", new { toeknResponse.Response.Token, email = registerUser.Email }, Request.Scheme);
             var message = new Message(new string[] { registerUser.Email }, "Confirmation email link", confirmationLink!);
             _emailService.SendEmail(message);
 
-            return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"Email Verification link sent to {registerUser.Email}  Please Verfiy your account" });
+            return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"Email Verification link sent to {registerUser.Email} Please Verfiy your email", IsSuccess = true });
         }
         return StatusCode(StatusCodes.Status500InternalServerError, new Response { Message = toeknResponse.Message, IsSuccess = false });
     }
