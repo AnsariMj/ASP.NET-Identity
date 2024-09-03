@@ -64,46 +64,51 @@ public class AuthenticationController : ControllerBase
     [Route("login")]
     public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
     {
-        //Checking the User Exist
-        var user = await _userManager.FindByNameAsync(loginModel.Username);
-
-        if (user.TwoFactorEnabled)
+        var loginOtpResponse = await _user.GetOtpByLoginAsync(loginModel);
+        if (loginOtpResponse != null)
         {
-            await _signInManager.SignOutAsync();
-            await _signInManager.PasswordSignInAsync(user, loginModel.Password, false, true);
-
-            var otp = await _userManager.GenerateTwoFactorTokenAsync(user, "Email");
-
-            var message = new Message(new string[] { user.Email! }, "Login Confirmation OTP", otp!);
-            _emailService.SendEmail(message);
-            return StatusCode(StatusCodes.Status200OK, new Response { Status = "Success", Message = $"We Have Send to an OTP to your Email: {user.Email}" });
-        }
-        //Checking valid Password
-        if (user != null && await _userManager.CheckPasswordAsync(user, loginModel.Password))
-        {
-            //claimlist creation
-            var authClaim = new List<Claim>
+            //Checking the User Exist
+            var user = loginOtpResponse.Response.user;
+            if (user.TwoFactorEnabled)
+            {
+                var otp = loginOtpResponse.Response.Token;
+                var message = new Message(new string[] { user.Email! }, "Login Confirmation OTP", otp);
+                _emailService.SendEmail(message);
+                return StatusCode(StatusCodes.Status200OK,
+                    new Response
+                    {
+                        IsSuccess = loginOtpResponse.IsSuccess,
+                        Status = "Success",
+                        Message = $"We Have Send to an OTP to your Email: {user.Email}"
+                    });
+            }
+            //Checking valid Password
+            if (user != null && await _userManager.CheckPasswordAsync(user, loginModel.Password))
+            {
+                //claimlist creation
+                var authClaim = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.UserName),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
-            var userRoles = await _userManager.GetRolesAsync(user);
+                var userRoles = await _userManager.GetRolesAsync(user);
 
-            //add roles to the list
-            foreach (var role in userRoles)
-            {
-                authClaim.Add(new Claim(ClaimTypes.Role, role));
+                //add roles to the list
+                foreach (var role in userRoles)
+                {
+                    authClaim.Add(new Claim(ClaimTypes.Role, role));
+                }
+
+                //generate token with claims
+                var jwtToken = GetToken(authClaim);
+
+                //returning the token
+                return Ok(new
+                {
+                    token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
+                    expiration = jwtToken.ValidTo
+                });
             }
-
-            //generate token with claims
-            var jwtToken = GetToken(authClaim);
-
-            //returning the token
-            return Ok(new
-            {
-                token = new JwtSecurityTokenHandler().WriteToken(jwtToken),
-                expiration = jwtToken.ValidTo
-            });
         }
         return Unauthorized();
     }
